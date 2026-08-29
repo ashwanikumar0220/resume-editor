@@ -8,10 +8,12 @@ load_dotenv()
 MONGO_URI =os.getenv("MONGO_URI")
 
 
+
 client = MongoClient(MONGO_URI)
 
 database=client["resume_builder"]
 users_collection=database["users"]
+otp_collection =database["otp_verifications"]
 
 
 try:
