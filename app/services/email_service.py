@@ -1,20 +1,36 @@
+import smtplib
+from email.mime.text import MIMEText
 import os
-import resend
 from dotenv import load_dotenv
 
 load_dotenv()
 
-resend.api_key=os.getenv("RESEND_API_KEY")
+def send_email(to_email:str,subject:str,html:str):
+    try:
+        sender_email=os.getenv("SENDER_EMAIL","")
+        sender_password=os.getenv("SENDER_PASSWORD","")
 
+        message =MIMEText(html,"html")
+        message["Subject"]=subject
+        message["From"]=sender_email
+        message["To"]=to_email
 
-async def send_email(to_email:str,subject:str,html:str):
-    params:resend.Emails.SendParams ={
-    "from":"onboarding@resend.dev",
-    "to":"manas788899@gmail.com",
-    "subject": subject,
-    "html":html,
-    }
+        server=smtplib.SMTP("smtp.gmail.com",587)
 
-    return await resend.Emails.send_async(params)
+        server.starttls()
 
-    
+        server.login(sender_email,sender_password)
+
+        server.sendmail(
+            sender_email,
+            to_email,
+            message.as_string()
+        )
+
+        server.quit()
+
+        return True
+    except Exception as e:
+        print("Email sending error:",e)
+        return False
+

@@ -12,3 +12,6 @@ def hash_otp(otp:str)->str:
 
 def get_otp_expiry()->int:
     return int(time.time())+600
+
+def verify_otp(plain_otp:str,hashed_otp:str)->bool:
+    return password_hash.verify(plain_otp,hashed_otp)

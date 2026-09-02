@@ -1,18 +1,21 @@
-from fastapi import APIRouter
+from fastapi import APIRouter,HTTPException
 
-from app.schemas.user import UserCreate
+from app.schemas.user import UserCreate,UserLogin
 from app.database.mongodb import users_collection,otp_collection
-from app.services.auth_service import hash_password
+from app.services.auth_service import hash_password,verify_password
 from app.models.user import User
-from app.models.otp import OTPVerification
-from app.services.otp_service import generate_otp,hash_otp,get_otp_expiry
+from app.models.otp import OTPVerification,OTPVerify
+from app.services.otp_service import generate_otp,hash_otp,get_otp_expiry,verify_otp
 from app.services.email_service import send_email
+import time
+
 
 router = APIRouter()
 
+# ******** SIGNUP ROUTE ********
 
 @router.post("/signup")
-def signup(user:UserCreate):
+async def signup(user:UserCreate):
     existing_user=users_collection.find_one({"email":user.email})
 
     if existing_user:
@@ -20,7 +23,6 @@ def signup(user:UserCreate):
 
     hashed_password=hash_password(user.password)
     new_user=User(
-        name=user.name,
         email=user.email,
         password_hash=hashed_password
     )
@@ -37,15 +39,72 @@ def signup(user:UserCreate):
         expires_at=expires_at
         )
     otp_collection.insert_one(otp_record.model_dump())
+    send_email(
+        to_email=user.email,
+        subject="Verify your email",
+        html=f"<h1>You OTP is: {otp}</h1><p>This OTP will expire in 10 minutes.</p>"
+        )
     return{
         "message":"User Created Successfully!"
     }
 
-@router.get("/test-email")
-async def test_email():
-    await send_email(
-        to_email="deyoti2034@kikaga.com",
-        subject="resume editor test",
-        html="<h1>resend is working</h1><p>this is a text gmail</p>"
+@router.post("/verify-otp")
+def verify_user_otp(data:OTPVerify):
+
+    otp_record = otp_collection.find_one({
+        "email":data.email,
+        "purpose":"signup"
+    })
+
+    if not otp_record:
+        raise HTTPException(
+            status_code=404,
+            detail="OTP not found"
         )
-    return {"message":"test email sent"}
+    if otp_record["expires_at"]<int(time.time()):
+        raise HTTPException(
+            status_code=400,
+            detail="OTP has expired"
+        )
+    if not verify_otp(data.otp,otp_record["otp_hash"]):
+        raise HTTPException(
+            status_code=400,
+            detail="Invaild OTP"
+        )
+    users_collection.update_one(
+        {"email":data.email},
+        {"$set":{"is_verified":True}}
+    )
+
+    otp_collection.delete_one({
+        "id":otp_record["_id"]
+    })
+
+    return{
+        "message":"Email verified successfully!"
+    }
+
+
+# ***** LOGIN ROUTE ******
+
+@router.post("/login")
+def login(user:UserLogin):
+
+    existing_user=users_collection.find_one(
+        {"email":user.email}
+    )
+    if not existing_user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+    if not verify_password(user.password,existing_user["password_hash"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Invaild password"
+        )
+    if not existing_user["is_verified"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Please verify your gmail first"
+        )
